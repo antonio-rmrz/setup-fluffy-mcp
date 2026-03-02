@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "fluffyjaws": {
+      "command": "fj",
+      "args": [
+        "mcp",
+        "--api",
+        "https://fluffyjaws.adobe.com"
+      ]
+    }
+  }
+}
