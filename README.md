@@ -24,6 +24,7 @@ From this repo root, run with no parameters:
 ```
 
 This launches the interactive wizard and guides setup end-to-end.
+The script is Bash-first and will automatically re-exec with Bash if launched via `sh`.
 
 Wizard behavior:
 - Prompts for IDE(s) to configure (default: `all`)
@@ -116,4 +117,3 @@ If run without parameters in a non-TTY environment, the script exits and asks fo
 - FluffyJaws is Adobe internal-only.
 - Treat output as internal context.
 - Use official `fj` CLI MCP mode only.
-

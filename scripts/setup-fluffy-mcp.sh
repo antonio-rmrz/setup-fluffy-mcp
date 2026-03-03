@@ -1,4 +1,14 @@
 #!/usr/bin/env bash
+
+# If invoked via `sh`, re-exec with bash so arrays and [[ ]] work consistently.
+if [ -z "${BASH_VERSION:-}" ]; then
+  if command -v bash >/dev/null 2>&1; then
+    exec bash "$0" "$@"
+  fi
+  echo "ERROR: This script requires bash." >&2
+  exit 1
+fi
+
 set -euo pipefail
 
 API_BASE="${FJ_API_BASE:-https://fluffyjaws.adobe.com}"
@@ -11,6 +21,35 @@ SKIP_INSTALL_SET=0
 PROJECT_DIR_SET=0
 API_BASE_SET=0
 declare -a IDES=()
+
+setup_colors() {
+  COLOR_ENABLED=0
+  if [[ -t 1 && -z "${NO_COLOR:-}" && "${TERM:-}" != "dumb" ]]; then
+    COLOR_ENABLED=1
+  fi
+
+  if [[ "$COLOR_ENABLED" -eq 1 ]]; then
+    C_RESET=$'\033[0m'
+    C_BOLD=$'\033[1m'
+    C_DIM=$'\033[2m'
+    C_RED=$'\033[31m'
+    C_GREEN=$'\033[32m'
+    C_YELLOW=$'\033[33m'
+    C_BLUE=$'\033[34m'
+    C_CYAN=$'\033[36m'
+  else
+    C_RESET=""
+    C_BOLD=""
+    C_DIM=""
+    C_RED=""
+    C_GREEN=""
+    C_YELLOW=""
+    C_BLUE=""
+    C_CYAN=""
+  fi
+}
+
+setup_colors
 
 usage() {
   cat <<'EOF'
@@ -35,16 +74,25 @@ Examples:
 EOF
 }
 
+section() {
+  echo
+  echo "${C_BOLD}${C_BLUE}$*${C_RESET}"
+}
+
 log() {
-  echo "==> $*"
+  echo "${C_CYAN}==>${C_RESET} $*"
+}
+
+ok() {
+  echo "${C_GREEN}OK${C_RESET}  $*"
 }
 
 warn() {
-  echo "WARNING: $*" >&2
+  echo "${C_YELLOW}WARNING:${C_RESET} $*" >&2
 }
 
 die() {
-  echo "ERROR: $*" >&2
+  echo "${C_RED}ERROR:${C_RESET} $*" >&2
   exit 1
 }
 
@@ -96,15 +144,14 @@ run_wizard() {
   local wizard_needs_project_dir=0
   local -a tokens
 
-  echo
-  echo "FluffyJaws MCP Setup Wizard"
-  echo "---------------------------"
-  echo "Select IDE(s) to configure:"
-  echo "  1) cursor"
-  echo "  2) claude-code"
-  echo "  3) claude-desktop"
-  echo "  4) codex"
-  echo "  5) all"
+  section "FluffyJaws MCP Setup Wizard"
+  echo "${C_DIM}Select IDE(s) to configure:${C_RESET}"
+  echo "  ${C_BOLD}1)${C_RESET} cursor"
+  echo "  ${C_BOLD}2)${C_RESET} claude-code"
+  echo "  ${C_BOLD}3)${C_RESET} claude-desktop"
+  echo "  ${C_BOLD}4)${C_RESET} codex"
+  echo "  ${C_BOLD}5)${C_RESET} all"
+  echo "${C_DIM}Tip: comma-separated values are supported (example: 1,4).${C_RESET}"
   echo
   read -r -p "Selection (comma-separated) [5]: " raw_selection
   raw_selection="${raw_selection:-5}"
@@ -165,7 +212,7 @@ run_wizard() {
     fi
   fi
 
-  echo
+  section "Wizard selections captured"
 }
 
 while [[ $# -gt 0 ]]; do
@@ -277,8 +324,9 @@ ensure_fj() {
 
 merge_mcp_json() {
   local config_path="$1"
+  local updated_path
 
-  python3 - "$config_path" "$API_BASE" <<'PY'
+  updated_path="$(python3 - "$config_path" "$API_BASE" <<'PY'
 import json
 import os
 import sys
@@ -322,6 +370,8 @@ with open(tmp, "w", encoding="utf-8") as f:
 os.replace(tmp, path)
 print(path)
 PY
+)"
+  ok "Configured $updated_path"
 }
 
 setup_cursor() {
@@ -408,6 +458,7 @@ run_chat_smoke_test() {
     echo "$output" >&2
     die "Chat smoke test failed."
   fi
+  ok "Chat smoke test passed."
 }
 
 run_mcp_healthcheck() {
@@ -525,11 +576,13 @@ run_full_verify() {
 
   run_chat_smoke_test
   run_mcp_healthcheck
-  log "Verification complete."
+  ok "Verification complete."
 }
 
+section "FluffyJaws MCP Setup"
 ensure_fj
 
+section "Configuring IDEs"
 for ide in "${IDES[@]}"; do
   case "$ide" in
     cursor)
@@ -547,12 +600,13 @@ for ide in "${IDES[@]}"; do
   esac
 done
 
-log "Setup complete for: ${IDES[*]}"
+ok "Setup complete for: ${IDES[*]}"
 
 if [[ "$RUN_VERIFY" -eq 1 ]]; then
+  section "Verification"
   run_full_verify
 fi
 
 echo
-echo "Next step:"
+echo "${C_BOLD}Next step:${C_RESET}"
 echo "  Restart your IDE/session so it reloads MCP configuration."
