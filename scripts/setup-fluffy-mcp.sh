@@ -3,11 +3,9 @@ set -euo pipefail
 
 API_BASE="${FJ_API_BASE:-https://fluffyjaws.adobe.com}"
 PROJECT_DIR="$(pwd)"
-DRY_RUN=0
 RUN_VERIFY=0
 SKIP_INSTALL=0
 WIZARD=0
-DRY_RUN_SET=0
 RUN_VERIFY_SET=0
 SKIP_INSTALL_SET=0
 PROJECT_DIR_SET=0
@@ -24,7 +22,6 @@ Options:
   --ide <name>         Target IDE/host. Repeatable.
   --project-dir <dir>  Project directory for project-level Cursor config (default: current dir).
   --api <url>          FluffyJaws API base URL (default: https://fluffyjaws.adobe.com).
-  --dry-run            Show planned changes without writing files.
   --skip-install       Do not auto-run install when fj is missing.
   --verify             Run built-in verification after setup.
   --wizard             Force interactive wizard mode.
@@ -34,7 +31,7 @@ Examples:
   ./scripts/setup-fluffy-mcp.sh
   ./scripts/setup-fluffy-mcp.sh --ide cursor
   ./scripts/setup-fluffy-mcp.sh --ide claude-code --ide codex --verify
-  ./scripts/setup-fluffy-mcp.sh --ide all --dry-run
+  ./scripts/setup-fluffy-mcp.sh --ide all --verify
 EOF
 }
 
@@ -160,14 +157,6 @@ run_wizard() {
     fi
   fi
 
-  if [[ "$DRY_RUN_SET" -eq 0 ]]; then
-    if prompt_yes_no "Dry-run only (do not write changes)?" "n"; then
-      DRY_RUN=1
-    else
-      DRY_RUN=0
-    fi
-  fi
-
   if [[ "$SKIP_INSTALL_SET" -eq 0 ]]; then
     if prompt_yes_no "Auto-install fj if missing?" "y"; then
       SKIP_INSTALL=0
@@ -197,11 +186,6 @@ while [[ $# -gt 0 ]]; do
       API_BASE="$2"
       API_BASE_SET=1
       shift 2
-      ;;
-    --dry-run)
-      DRY_RUN=1
-      DRY_RUN_SET=1
-      shift
       ;;
     --skip-install)
       SKIP_INSTALL=1
@@ -282,11 +266,6 @@ ensure_fj() {
     die "fj not found and --skip-install was set."
   fi
 
-  if [[ "$DRY_RUN" -eq 1 ]]; then
-    log "[dry-run] fj not found. Would run official fj installer command."
-    return
-  fi
-
   log "fj not found. Running official fj installer..."
   # Official Adobe FluffyJaws CLI installer command (verbatim).
   API_BASE=https://fluffyjaws.adobe.com; if curl -fsSL "$API_BASE/" -o /dev/null 2>/dev/null; then curl -fsSL "$API_BASE/api/cli/install.sh" | bash; else echo "VPN required. Connect to VPN and retry." >&2; false; fi
@@ -298,11 +277,6 @@ ensure_fj() {
 
 merge_mcp_json() {
   local config_path="$1"
-
-  if [[ "$DRY_RUN" -eq 1 ]]; then
-    log "[dry-run] Would configure $config_path"
-    return
-  fi
 
   python3 - "$config_path" "$API_BASE" <<'PY'
 import json
@@ -416,12 +390,6 @@ setup_codex() {
   fi
 
   log "Configuring Codex MCP server using $codex_bin..."
-
-  if [[ "$DRY_RUN" -eq 1 ]]; then
-    log "[dry-run] Would run: $codex_bin mcp remove fluffyjaws (if present)"
-    log "[dry-run] Would run: $codex_bin mcp add fluffyjaws -- fj mcp --api $API_BASE"
-    return
-  fi
 
   if "$codex_bin" mcp get fluffyjaws >/dev/null 2>&1; then
     "$codex_bin" mcp remove fluffyjaws >/dev/null
@@ -582,11 +550,7 @@ done
 log "Setup complete for: ${IDES[*]}"
 
 if [[ "$RUN_VERIFY" -eq 1 ]]; then
-  if [[ "$DRY_RUN" -eq 1 ]]; then
-    log "[dry-run] Would run built-in verification (whoami + chat smoke + MCP health check)."
-  else
-    run_full_verify
-  fi
+  run_full_verify
 fi
 
 echo
