@@ -1,234 +1,109 @@
-# FluffyJaws MCP Integration
+# FluffyJaws MCP Setup Kit
 
-Professional, production-ready integration of **Mr. FluffyJaws (FluffyJaws / FJ)** into MCP-capable LLM hosts using the official `fj` CLI.
+One script. Any IDE.
 
-This project configures FluffyJaws as a **tool server** for hosts like Cursor, Claude Desktop, Claude Code, Codex, and other MCP clients.
+This kit configures FluffyJaws MCP correctly for:
+- Cursor
+- Claude Code
+- Claude Desktop
+- Codex
 
-## Overview
-
-FluffyJaws is an **Adobe internal-only** assistant optimized for retrieval and reasoning over internal systems (wikis, Jira, Dynamics, Slack, SharePoint, Cloud Manager, runbooks, and related Adobe context).
-
-This integration:
-- Uses the official MCP entrypoint: `fj mcp --api https://fluffyjaws.adobe.com`
-- Keeps your primary coding model as the orchestrator
-- Routes Adobe-internal questions to FluffyJaws only when needed
-- Supports robust operation with clear failure handling
-
-## Architecture
-
-```text
-Primary LLM Host (Cursor / Claude / Codex / etc.)
-        |
-        | MCP (stdio)
-        v
-fj mcp --api https://fluffyjaws.adobe.com
-        |
-        v
-FluffyJaws Internal Backend (Adobe network)
-```
-
-## Prerequisites
-
-- Adobe VPN / corp network connectivity
-- Access to `https://fluffyjaws.adobe.com`
-- `curl` + shell (`bash`)
-- Internal entitlement/group access for FluffyJaws if required
+Official MCP entrypoint used everywhere:
+- `fj mcp --api https://fluffyjaws.adobe.com`
 
 ## Quick Start
 
-### 1) Install `fj` CLI (official)
+From this repo root:
 
 ```bash
-API_BASE=https://fluffyjaws.adobe.com; if curl -fsSL "$API_BASE/" -o /dev/null 2>/dev/null; then curl -fsSL "$API_BASE/api/cli/install.sh" | bash; else echo "VPN required. Connect to VPN and retry." >&2; false; fi
+./scripts/setup-fluffy-mcp.sh
 ```
 
-### 2) Verify installation
+This launches the interactive wizard where you select your IDE(s) and options.
+
+For non-interactive/CI usage:
 
 ```bash
-command -v fj
-fj --help
-fj chat "Say 'FluffyJaws MCP is installed correctly' and nothing else."
+./scripts/setup-fluffy-mcp.sh --ide all --verify
 ```
 
-### 3) Add MCP server (project-level Cursor example)
+Then restart your IDE/session.
 
-Create `.cursor/mcp.json`:
+## What `setup-fluffy-mcp.sh` Does
 
-```json
-{
-  "mcpServers": {
-    "fluffyjaws": {
-      "command": "fj",
-      "args": ["mcp", "--api", "https://fluffyjaws.adobe.com"]
-    }
-  }
-}
+1. Checks VPN/internal reachability to `https://fluffyjaws.adobe.com`.
+2. Installs `fj` automatically if missing (official installer command).
+3. Writes/merges the right MCP config for the IDE you choose.
+4. Optional verification (`--verify`, or selected in wizard):
+   - `fj whoami` session check
+   - chat smoke test
+   - MCP protocol health check (`initialize` + `tools/list` + `fluffyjaws_chat`)
+
+## Usage
+
+```bash
+./scripts/setup-fluffy-mcp.sh --ide <cursor|claude-code|claude-desktop|codex|all> [options]
 ```
 
-## Host Configuration
+Options:
+- `--ide <name>`: repeatable; choose one or more targets
+- `--project-dir <dir>`: project path for project-level Cursor config (default: current dir)
+- `--api <url>`: override API base (default `https://fluffyjaws.adobe.com`)
+- `--dry-run`: preview changes only
+- `--skip-install`: do not auto-install `fj` if missing
+- `--verify`: run built-in verification checks
+- `--wizard`: force interactive wizard mode
+
+Examples:
+
+```bash
+./scripts/setup-fluffy-mcp.sh --ide codex
+./scripts/setup-fluffy-mcp.sh --ide cursor --ide claude-code
+./scripts/setup-fluffy-mcp.sh --ide all --dry-run
+./scripts/setup-fluffy-mcp.sh --wizard
+```
+
+## Where Config Is Written
 
 ### Cursor
-
-User-level: `~/.cursor/mcp.json`  
-Project-level: `.cursor/mcp.json`
-
-```json
-{
-  "mcpServers": {
-    "fluffyjaws": {
-      "command": "fj",
-      "args": ["mcp", "--api", "https://fluffyjaws.adobe.com"]
-    }
-  }
-}
-```
-
-### Claude Desktop
-
-Typical config path:
-- macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
-- Windows: `%APPDATA%\Claude\claude_desktop_config.json`
-
-```json
-{
-  "mcpServers": {
-    "fluffyjaws": {
-      "command": "fj",
-      "args": ["mcp", "--api", "https://fluffyjaws.adobe.com"]
-    }
-  }
-}
-```
+- `~/.cursor/mcp.json`
+- `<project>/.cursor/mcp.json`
 
 ### Claude Code
+- `~/.claude.json` (top-level `mcpServers`)
 
-Config path:
-- `~/.claude.json`
-
-Top-level `mcpServers` entry:
-
-```json
-{
-  "mcpServers": {
-    "fluffyjaws": {
-      "command": "fj",
-      "args": ["mcp", "--api", "https://fluffyjaws.adobe.com"]
-    }
-  }
-}
-```
+### Claude Desktop
+- macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
+- Linux: `~/.config/Claude/claude_desktop_config.json`
+- Windows: `%APPDATA%\\Claude\\claude_desktop_config.json` (if `APPDATA` is set)
 
 ### Codex
-
-Recommended:
-
-```bash
-codex mcp add fluffyjaws -- fj mcp --api https://fluffyjaws.adobe.com
-codex mcp list
-```
-
-Equivalent `~/.codex/config.toml`:
-
-```toml
-[mcp_servers.fluffyjaws]
-command = "fj"
-args = ["mcp", "--api", "https://fluffyjaws.adobe.com"]
-```
-
-## Tool Routing Policy (Recommended)
-
-Use FluffyJaws when the request needs Adobe-internal evidence:
-- AEM / Experience Cloud troubleshooting
-- Internal docs, runbooks, Slack, SharePoint, Jira, Dynamics
-- Pipeline failure investigations and incident context
-
-Do not use FluffyJaws for:
-- Purely generic coding, math, writing, or public-only questions
-
-Operational rule:
-- Default to at most one FluffyJaws call per turn
-- Make a second call only if first result is incomplete or user explicitly asks
-
-## Conversation Continuity (Important)
-
-FluffyJaws MCP calls are effectively single-turn from the host perspective.
-
-To preserve continuity:
-1. Keep local memory of prior FJ Q/A snippets.
-2. On follow-ups, prepend a compact context summary into the next query.
-3. Ask FluffyJaws to confirm/correct prior findings before extending conclusions.
-
-Example follow-up format:
-
-```text
-Prior FluffyJaws context:
-- [fact 1]
-- [fact 2]
-- [source hints]
-
-New question:
-[follow-up request]
-
-Please confirm or correct prior findings, then provide updated recommendations.
-```
-
-## Reliability Defaults
-
-Recommended production defaults:
-- MCP startup timeout: `15s`
-- Tool call timeout: `45s`
-- Retry transient failures: `2` retries with backoff (`2s`, `5s`)
-- No retries on permission/auth failures
-- Circuit breaker: after `3` consecutive failures, pause auto-calls for `5 minutes`
-
-Graceful fallback behavior:
-- Continue with base model assistance
-- Clearly disclose that Adobe-internal retrieval was unavailable
+- Uses `codex mcp add fluffyjaws -- fj mcp --api https://fluffyjaws.adobe.com`
+- Persists to `~/.codex/config.toml`
 
 ## Troubleshooting
 
-### `fj: command not found`
-- Confirm install path: `command -v fj`
-- Ensure install directory is in `PATH`
-- Restart shell
+### VPN/connectivity
 
-### Network / VPN errors
-- Reconnect Adobe VPN
-- Re-run preflight check:
-  ```bash
-  curl -fsSL https://fluffyjaws.adobe.com/ -o /dev/null && echo OK || echo FAIL
-  ```
+```bash
+curl -fsSL https://fluffyjaws.adobe.com/ -o /dev/null && echo OK || echo FAIL
+```
 
-### Unauthorized / session expired
-- Run login flow:
-  ```bash
-  fj login
-  fj whoami
-  ```
+### Session missing
 
-### MCP server not appearing in host
-- Validate host config JSON/TOML syntax
-- Restart the host application/session
-- Confirm server registration (`codex mcp list` or host MCP diagnostics)
+```bash
+fj login
+./scripts/setup-fluffy-mcp.sh --ide all --verify
+```
 
-## Validation Checklist
+### Preview before writing files
 
-- `fj --help` works
-- `fj whoami` confirms active session
-- Host lists `fluffyjaws` MCP server
-- `fluffyjaws_chat` is discoverable in tools list
-- A known internal query returns useful Adobe-context output
-- VPN-down scenario yields clear fallback messaging
+```bash
+./scripts/setup-fluffy-mcp.sh --ide all --dry-run
+```
 
-## Security and Scope
+## Security Notes
 
-- Internal Adobe data may be sensitive: share outputs on a need-to-know basis.
-- Treat FluffyJaws responses as evidence inputs to your final answer, not as an unverified ground truth.
-- Do not assume OpenAI-compatible public endpoints; use official `fj` MCP integration only.
-
-## Project Status
-
-- `fj` CLI integration: configured
-- MCP server wiring: configured for major hosts
-- Production guidance: included in this README
-
+- FluffyJaws is Adobe internal-only.
+- Treat output as internal context.
+- Use official `fj` CLI MCP mode only.
